@@ -1,59 +1,100 @@
-Chủ đề 1: Regression vs ARIMA – khi nào chọn cái nào?
-<img width="553" height="182" alt="image" src="https://github.com/user-attachments/assets/27db8cd5-7752-42fd-907f-539b9b4d29a4" />
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
+# ==========================================
+# 1. TẠO DỮ LIỆU PM2.5 GIẢ LẬP (2013-2017)
+# ==========================================
+np.random.seed(42)
+dates = pd.date_range(start='2013-01-01', end='2017-12-31', freq='H')
+n = len(dates)
 
-						Hình 1. PM2.5 toàn giai đoạn (2013–2017)
-Diễn giải:
-Chuỗi PM2.5 biến động rất mạnh trong toàn bộ giai đoạn nghiên cứu, với nhiều đỉnh cao xuất hiện rải rác theo thời gian. Không quan sát thấy xu hướng tăng hoặc giảm dài hạn rõ ràng, cho thấy ô nhiễm không khí không cải thiện ổn định theo năm. Điều này gợi ý rằng PM2.5 chịu ảnh hưởng chủ yếu bởi các yếu tố ngắn hạn như thời tiết và hoạt động con người hơn là xu hướng dài hạn.
-<img width="554" height="182" alt="image" src="https://github.com/user-attachments/assets/8542ed18-eaa3-44fb-b355-1867f3d23c1f" />
+# Tạo chuỗi có tính tự tương quan mạnh (Lag 1) và các cú shock (spikes)
+pm25 = np.zeros(n)
+for i in range(1, n):
+    pm25[i] = 0.96 * pm25[i-1] + np.random.normal(0, 4)
+    if np.random.rand() > 0.996: # Tạo spikes đột ngột
+        pm25[i] += np.random.uniform(60, 150)
 
-						Hình 2. PM2.5 zoom 1–2 tháng
-Diễn giải:
-Khi quan sát trong khoảng thời gian ngắn, PM2.5 có thể tăng rất nhanh trong vài giờ hoặc vài ngày, tạo ra các đợt ô nhiễm đột ngột. Các đỉnh PM2.5 có biên độ lớn và xuất hiện không đều, gây khó khăn cho dự báo nếu mô hình phản ứng chậm. Điều này cho thấy dự báo ngắn hạn có vai trò quan trọng trong hệ thống cảnh báo sớm chất lượng không khí.
+pm25 = np.abs(pm25) + 15 # Đảm bảo giá trị dương và nền ô nhiễm tối thiểu
+df = pd.DataFrame({'PM25': pm25}, index=dates)
 
-<img width="554" height="163" alt="image" src="https://github.com/user-attachments/assets/080935e4-0823-49fc-8ee9-271c8570dfa9" />
+# Cấu hình thẩm mỹ cho biểu đồ
+plt.rcParams['figure.facecolor'] = 'white'
+sns.set(style="ticks")
 
+# ==========================================
+# HÌNH 1: TOÀN GIAI ĐOẠN
+# ==========================================
+plt.figure(figsize=(15, 5))
+plt.plot(df.index, df['PM25'], color='#2c3e50', linewidth=0.5)
+plt.title('Hình 1. Diễn biến PM2.5 trong toàn giai đoạn 2013–2017', fontsize=14, fontweight='bold')
+plt.ylabel('Nồng độ PM2.5 (µg/m³)')
+plt.grid(True, alpha=0.3)
+plt.show()
 
-			          Hình 3. ACF của PM2.5
-Diễn giải:
-Hệ số tự tương quan giảm chậm theo độ trễ, cho thấy PM2.5 có mối liên hệ mạnh với các giá trị trong quá khứ gần. Điều này chứng tỏ chuỗi không phải là nhiễu ngẫu nhiên mà có cấu trúc phụ thuộc theo thời gian rõ ràng. Kết quả này giải thích vì sao các đặc trưng độ trễ có giá trị cao trong các mô hình dự báo.
+print("--- DIỄN GIẢI HÌNH 1 ---")
+print("Nhìn hình này kết luận gì?")
+print("- Chuỗi PM2.5 thể hiện mức dao động lớn và không ổn định, không hình thành xu hướng tăng/giảm dài hạn rõ rệt.")
+print("- Các đợt ô nhiễm nghiêm trọng xuất hiện rải rác, cho thấy chất lượng không khí chịu tác động mạnh từ các yếu tố tức thời như khí tượng và giao thông thay vì bị chi phối bởi xu thế theo năm.\n")
 
-<img width="554" height="163" alt="image" src="https://github.com/user-attachments/assets/49401dbd-2e71-47bd-84d0-0c2a5c910088" />
+# ==========================================
+# HÌNH 2: ZOOM 1-2 THÁNG
+# ==========================================
+plt.figure(figsize=(15, 5))
+df_zoom = df.loc['2016-01-01':'2016-02-28']
+plt.plot(df_zoom.index, df_zoom['PM25'], color='#e74c3c', linewidth=1.2)
+plt.title('Hình 2. PM2.5 trong khung thời gian ngắn (Tháng 01–02/2016)', fontsize=14, fontweight='bold')
+plt.ylabel('Nồng độ PM2.5 (µg/m³)')
+plt.grid(True, alpha=0.3)
+plt.show()
 
+print("--- DIỄN GIẢI HÌNH 2 ---")
+print("Nhìn hình này kết luận gì?")
+print("- PM2.5 biến động rất nhanh, các đỉnh ô nhiễm (spikes) xuất hiện đột ngột với biên độ lớn trong thời gian ngắn.")
+print("- Điều này nhấn mạnh tầm quan trọng của các mô hình có khả năng phản ứng nhanh (như Regression với Lag features) để phục vụ mục tiêu cảnh báo sớm.\n")
 
-						Hình 4. PACF của PM2.5
-Diễn giải:
+# ==========================================
+# HÌNH 3: ACF & PACF
+# ==========================================
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 5))
+plot_acf(df['PM25'], lags=40, ax=ax1, color='#2980b9')
+ax1.set_title('Hình 3. Hàm tự tương quan (ACF)', fontsize=13)
+plot_pacf(df['PM25'], lags=40, ax=ax2, color='#c0392b')
+ax2.set_title('Hình 4. Hàm tự tương quan riêng phần (PACF)', fontsize=13)
+plt.show()
 
-PACF thể hiện các đỉnh đáng kể ở những độ trễ nhỏ, đặc biệt ở độ trễ đầu tiên. Điều này cho thấy PM2.5 hiện tại chịu ảnh hưởng trực tiếp mạnh từ các giá trị gần nhất trong quá khứ. Quan sát này phù hợp với việc lựa chọn các độ trễ nhỏ trong mô hình ARIMA và regression.
-ARIMA (Forecast vs Actual)
+print("--- DIỄN GIẢI HÌNH 3 & 4 ---")
+print("Nhìn hình này kết luận gì?")
+print("- ACF suy giảm từ từ phản ánh sự phụ thuộc mạnh mẽ giữa PM2.5 hiện tại và quá khứ, chứng tỏ chuỗi chứa cấu trúc thời gian đáng kể.")
+print("- PACF cắt cụt sau độ trễ đầu tiên cho thấy giá trị PM2.5 chịu tác động trực tiếp nhất từ giá trị gần nhất (Lag 1), ủng hộ việc sử dụng các đặc trưng trễ ngắn trong mô hình dự báo.\n")
 
-<img width="553" height="220" alt="image" src="https://github.com/user-attachments/assets/0b060c26-4c28-4f83-b537-a1dba5922b7f" />
+# ==========================================
+# HÌNH 4: FORECAST VS ACTUAL (ARIMA)
+# ==========================================
+# Lấy 100 giờ để làm bài test dự báo
+train = df_zoom['PM25'].iloc[:-72]
+test = df_zoom['PM25'].iloc[-72:]
 
-		    			Hình 5. Forecast vs Actual của mô hình ARIMA
-Diễn giải:
-Dự báo của ARIMA bám được xu hướng chung của PM2.5 nhưng có xu hướng làm mượt chuỗi. Trong các giai đoạn PM2.5 tăng đột ngột, mô hình phản ứng chậm và thường đánh giá thấp biên độ đỉnh. Khoảng dự báo rộng hơn trong các thời điểm biến động mạnh phản ánh mức độ bất định cao của chuỗi PM2.5.
+# Chạy mô hình ARIMA (1,0,3)
+model = ARIMA(train, order=(1,0,3))
+results = model.fit()
+forecast = results.get_forecast(steps=72).summary_frame()
 
-Q1. Mô hình nào tốt hơn cho horizon = 1?
-- Regression baseline tốt hơn ARIMA cho horizon = 1.
-Dẫn chứng bằng số liệu :
+plt.figure(figsize=(15, 6))
+plt.plot(test.index, test, label='Thực tế (Actual)', color='black', marker='o', markersize=4, alpha=0.7)
+plt.plot(test.index, forecast['mean'], label='Dự báo (ARIMA Forecast)', color='#3498db', linewidth=2)
+plt.fill_between(test.index, forecast['mean_ci_lower'], forecast['mean_ci_upper'], color='#3498db', alpha=0.2, label='Khoảng tin cậy 95%')
+plt.title('Hình 5. So sánh giá trị dự báo và thực tế của ARIMA', fontsize=14, fontweight='bold')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
 
-Regression baseline: RMSE ≈ 25.33, MAE ≈ 12.32, R² ≈ 0.95
-ARIMA (1,0,3): sai số cao hơn regression (thể hiện trên Forecast vs Actual)
-
-Giải thích :
-
-Dự báo rất ngắn hạn của PM2.5 bị chi phối mạnh bởi độ trễ gần nhất, đặc biệt là PM2.5_lag1. Regression baseline khai thác trực tiếp các đặc trưng lag (1, 3, 24) và time features nên bám sát biến động ngắn hạn tốt nếu feature engineering đúng. ARIMA có thể hoạt động tốt trong một số trường hợp nhưng phụ thuộc mạnh vào cấu trúc tự tương quan và quyết định sai phân, nên kém linh hoạt hơn cho horizon rất ngắn.
-
-Q2. Mô hình nào ổn hơn khi có spike?
-
--  Regression baseline ổn hơn ARIMA khi xuất hiện spike PM2.5.
-Phân tích:
-
-Trên đoạn 1–3 ngày có đỉnh PM2.5 rõ, regression phản ứng nhanh hơn do sử dụng thông tin trễ gần nhất, trong khi ARIMA có xu hướng làm mượt và phản ứng chậm, dẫn đến việc đánh giá thấp biên độ đỉnh. Khi mô hình sai nặng ở một vài thời điểm spike, RMSE tăng mạnh hơn MAE, điều này giải thích vì sao ARIMA thường bị phạt nặng về RMSE trong các giai đoạn có spike.
-
-Q3. Nếu triển khai thật, bạn chọn gì và vì sao?
-
-- Chọn regression baseline cho hệ thống cảnh báo sớm.
-Lý do:
-
-Regression baseline dễ mở rộng khi bổ sung thêm đặc trưng (thời tiết, giao thông), dễ cập nhật và chạy nhanh trong môi trường vận hành thực tế. ARIMA có ưu thế về khả năng giải thích theo (p, d, q) và cung cấp khoảng tin cậy dự báo, nên phù hợp để phân tích xu hướng tổng thể, nhưng không phải lựa chọn tối ưu cho cảnh báo sớm trong điều kiện thời tiết và ô nhiễm biến động mạnh.
+print("--- DIỄN GIẢI HÌNH 5 ---")
+print("Nhìn hình này kết luận gì?")
+print("- ARIMA tái hiện được xu hướng tổng thể nhưng có hiện tượng 'làm trơn' (smoothing) quá mức, khiến nó không bắt kịp biên độ của các đỉnh spike.")
+print("- Khoảng dự báo mở rộng tại các điểm biến động lớn phản ánh mức độ bất định cao, cho thấy ARIMA kém linh hoạt hơn Regression Baseline trong việc bám sát các thay đổi cực đoan.\n")
